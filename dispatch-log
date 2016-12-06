@@ -3,25 +3,45 @@
 SHELL := bash
 make := $(lastword $(MAKEFILE_LIST))
 $(make):;
-. := $(or $(filter $(words $(MAKECMDGOALS)), 1), $(error usage: $(make) LOGFILE|install|help))
+.DEFAULT_GOAL := main
+
+define check
+$(or
+  $(or $(and $(filter $(words $(MAKECMDGOALS)), 0),
+             $(filter $(shell tty | tr ' ' _), not_a_tty)),
+       $(and $(filter $(words $(MAKECMDGOALS)), 1),
+             $(filter $(MAKECMDGOALS), help install))),
+  $(error usage: "$(make) [install|help]" or "SYSLOG-NG | $(make)"))
+endef
+. := $(strip $(check))
+
+bin    ?= /usr/local/bin
+prefix ?= /space/log2
 
 define help
 echo -e "\tmake -f $(MAKEFILE_LIST) install [bin=PATH (default /usr/local/bin)]"
 echo -e "\t\tinstall this Makefile in $(bin)"
-echo -e "\t$(make) LOGFILE"
-echo -e "\t\tdispatch lines of LOGFILE in LOGDIR selected by basename of origin filename"
-echo -e "\t$(make) [OPTIONS] LOGFILE"
+echo -e "\t$(make) main"
+echo -e "\t\tdispatch lines from STDIN in LOGDIR/FILE made from concatenation of first field and second field without PREFIX"
+echo -e "\t$(make) [OPTIONS] main"
 echo -e "\t\tpass OPTIONS as Make variables"
 echo -e "\t\t\t[erase=BOOL (default False)]"
-echo -e "\t\t\t[prefix=PATH (default /space/log2)]"
-echo -e "\t\t\t[logdir=PATH (default basename(LOGFILE).d]"
-echo -e "\t\t\t[pipe=BOOL (default FALSE)]"
+echo -e "\t\t\t[prefix=PATH (default $(prefix))]"
 echo -e ""
-echo -e "\t\tset erase to awk True (!"" && !0) to not concatenate upon destination files"
-echo -e "\t\tset pipe to Make True (!"") to read from STDIN instead of LOGFILE"
+echo -e "\t\tset erase to Make True (!\"\") to not concatenate upon destination files"
 endef
 
-bin ?= /usr/local/bin
+define awk
+BEGIN { path = "^/([[:alnum:]_.-]+/?)+$$" }
+($$1 !~ path) || ($$2 !~ path) { exit(2) }
+NR == 1 || previous != $$1 { system("mkdir -p " $$1); previous = $$1 }
+{
+  cmd = substr($$0, index($$0, $$3));
+  file = $$1 substr($$2, length("$(prefix)") + 1);
+  if (erase) print cmd > file; else print cmd >> file; fflush()
+}
+endef
+
 ifeq ($(if $(filter $(MAKECMDGOALS), install),T),T)
 install := $(bin)/$(make)
 $(install): $(make); sudo install $< $(@D)
@@ -29,26 +49,10 @@ install: $(install);
 else ifeq ($(if $(filter $(MAKECMDGOALS), help),T),T)
 help:; @$($@)
 else
-
-prefix    ?= /space/log2
-unmatched ?= UNMATCHED.log
-logdir    ?= $(basename $@).d/
-
-define awk
-BEGIN {
-  regexp = "^.* \\[$(prefix)/(.*)]: (.*)$$";
-  system("mkdir -p $(logdir)");
-}
- match($$0, regexp, m) { if (erase) print m[2] > logdir m[1]; else print m[2] >> logdir m[1]; fflush() }
-!match($$0, regexp, m) { print $$0  >> logdir "$(unmatched)"; fflush() }
-endef
-
-vars = $(foreach _, $1, -v $_=$($_))
-$(MAKECMDGOALS):; @gawk $(call vars, erase unmatched logdir) '$(strip $(awk))' $(if $(pipe),,$@)
-.PHONY: $(MAKECMDGOALS)
-
+main:; @gawk $(if $(erase),-v erase=1) '$(strip $(awk))'
+.PHONY: main
 endif
 
 # Local Variables:
-# Mode: GNUmakefile
+# Mode: makefile-gmake
 # End:

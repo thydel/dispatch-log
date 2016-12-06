@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+
+top:; @date
+
+SHELL := bash
+make := $(lastword $(MAKEFILE_LIST))
+$(make):;
+
+bin ?= /usr/local/bin
+install := $(bin)/$(make)
+ifdef node
+install:; rsync -av $(make) $(node):tmp
+else
+$(install): $(make); sudo install $< $(@D)
+install: $(install);
+endif
+
+src ?= /space/log
+dst ?= /space/log2
+
+dir  := mkdir -p $(dst)
+log  := find $(src) -name '*.log'
+base := cut -d/ -f4-
+
+apache-links := sed -e 's;\(.*\)/\(.*\);ln -f $(src)/\1/\2 $(dst)/\1_\2;'
+php-links    := sed -e 's;\(.*\)/php/\(.*\);ln -f $(src)/\1/php/\2 $(dst)/\1_php_\2;'
+
+apache := $(dir); $(log) | grep -v /php/ | $(base) | $(apache-links)
+php    := $(dir); $(log) | grep    /php/ | $(base) | $(php-links)
+
+apache php:; @$($@)
+
+# Local Variables:
+# Mode: makefile-gmake
+# End:
