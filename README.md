@@ -1,6 +1,6 @@
 # dispatch-log
 
-## previous setup
+## Previous setup
 
 Our previous centralized log for apache vhosts used
 [logger(1)][logger]
@@ -16,7 +16,7 @@ From `apache conf`:
 
 The php logs were not centralized.
 
-## new setup on the rsyslog source nodes
+## New setup on the rsyslog source nodes
 
 The new centralized log setup use the [rsyslog imfile module][imfile]
 to convert our standard text apache and php log file (and possibly
@@ -59,7 +59,7 @@ filename.
 
 Here is our [gatherer script](gather-log "local src")
   
-## new setup on the syslog-ng central node
+## New setup on the syslog-ng central node
 
 [syslog-ng][syslog-ng] is used and all vhost log files collected are
 received as a unique log stream after beeing tag splitted
@@ -100,3 +100,30 @@ NR == 1 || previous != $1 { system("mkdir -p " $1); previous = $1 }
 
 Where `prefix` is passed via the (Makefile) wrapper and is the base
 path of gathered remote log files.
+
+## Notes
+
+The script ensure requested folder is created when path
+change from one line to the next.
+
+This is convenient but may request to keep one process by base folder
+to avoid unnecessary [fork(2)][fork]/[exec(3)][exec] for `mkdir -p`
+
+Here are the choices we face:
+
+- Keep a single `dispatch` process using muliple *filter* for a unique
+  *log* entry in `syslog-ng` conf and don't care for possible
+  ressources waste till it began to hurt.
+  
+- Use as many `dispatch` process as needed to limit `mkdir -p` call to
+  day change by using one *log* entry for each *node*, *channel*
+  combination
+
+- Make a new `dispatch` script to [stat(2)][stat] before
+  [write(2)][write], but that probably require `perl` or `python`
+  instead of `awk`.
+
+[stat]: https://linux.die.net/man/2/stat "man"
+[write]: https://linux.die.net/man/2/write "man"
+[fork]: https://linux.die.net/man/2/fork "man"
+[exec]: https://linux.die.net/man/3/exec "man"
